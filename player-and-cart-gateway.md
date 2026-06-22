@@ -28,27 +28,17 @@ costs nothing on initial page load.
 
 ### 1.1 The public API
 
-The module exports these functions:
+The module exports these three functions:
 
-```ts
+```text
 // Launch the full player for a single live event or replay.
-startPlayer(eventId
-:
-string, params ? : PlayerParams
-):
-void
+startPlayer(eventId: string, params?: PlayerParams): void
 
 // Launch the player in playlist mode over a media collection (see the Playlist guide).
-  startPlayerCollection(mediaCollection
-:
-MediaCollection, params ? : MediaCollectionParams
-):
-void
+startPlayerCollection(mediaCollection: MediaCollection, params?: MediaCollectionParams): void
 
 // Close / tear down the player.
-  stopPlayer()
-:
-void
+stopPlayer(): void
 ```
 
 `PlayerParams` (all fields optional):
@@ -68,14 +58,16 @@ type PlayerParams = {
   // Show the close (X) button. Defaults to true.
   showCloseButton?: boolean;
   // Share button configuration. Defaults to { active: true }.
-  share?: { active: boolean };
+  // active: false hides the share button. When active, optionally pass `url` to override the
+  // link shown in the share modal (defaults to the current page URL).
+  share?: { active: false } | { active: true; url?: string };
   // Called when the viewer closes the player.
   onClose?: () => void;
 };
 ```
 
 `MediaCollection` / `MediaCollectionParams` (used by `startPlayerCollection`, see the [Playlist
-guide](04-playlist-widget.md)):
+guide](playlist-widget.md)):
 
 ```ts
 type MediaCollection = {
@@ -88,7 +80,10 @@ type MediaCollectionParams = {
   country?: string;
   chatNickname?: string;
   showCloseButton?: boolean;
-  share?: { active: boolean };
+  // Share button configuration. Defaults to { active: true }.
+  // active: false hides the share button. When active, optionally pass `url` to override the
+  // link shown in the share modal (defaults to the current page URL).
+  share?: { active: false } | { active: true; url?: string };
   onClose?: () => void;
 };
 ```
@@ -97,6 +92,10 @@ type MediaCollectionParams = {
 way.
 
 ### 1.2 Launching it
+
+The example below uses a dynamic `import()` so the player bundle is fetched **only when the shopper
+actually opens the player** — it costs nothing on initial page load. Trigger it from a click (or whenever
+you need it) rather than importing the module up front.
 
 ```js
 function openLiveMeUpPlayer(eventId, options = {}) {
@@ -137,13 +136,13 @@ when fetching prices. Reusing those guarantees the player's currency matches the
 You never hard-code ids. Each widget reads them from a data source:
 
 - **Currently-live event:** the shop metafield `app--5813997--current_live` / key `event_infos` (see
-  the [Mini Player guide](03-mini-player-widget.md)).
+  the [Mini Player guide](mini-player-widget.md)).
 - **Upcoming events & published replays:** the Live Shopping Page data — either the metafield-backed theme
   block or the `GET https://api.livemeup.io/v2/landing-page` endpoint (see the [Live Shopping Page
-  guide](02-live-shopping-page.md)).
+  guide](live-shopping-page.md)).
 - **Replay for a specific product:** the product metafield
-  `app--5813997--last_replay_with_product_highlighted` (see the [Pop Me Up guide](05-pop-me-up-widget.md)).
-- **A curated playlist:** the `media_collections` metafield (see the [Playlist guide](04-playlist-widget.md)).
+  `app--5813997--last_replay_with_product_highlighted` (see the [Pop Me Up guide](pop-me-up-widget.md)).
+- **A curated playlist:** the `media_collections` metafield (see the [Playlist guide](playlist-widget.md)).
 
 ---
 
@@ -177,10 +176,8 @@ effect, so set it as early as possible (e.g. at app bootstrap).
 > (a product page, the Pop Me Up widget, the Mini Player, a "watch live" button in the header, …), so the
 > gateway must be registered on each of those pages **before** the shopper can trigger `startPlayer`.
 >
-> - **Multi-page / server-rendered site:** register the gateway in a script that runs on every page (or at
-    > least every page that can open the player) — not only on the homepage.
-> - **Single-page app (SPA):** the `window` global survives client-side route changes, so setting it once at
-    > app startup is enough. Just make sure it runs before the first possible `startPlayer` call.
+> - **Multi-page / server-rendered site:** register the gateway in a script that runs on every page (or at least every page that can open the player) — not only on the homepage.
+> - **Single-page app (SPA):** the `window` global survives client-side route changes, so setting it once at app startup is enough. Just make sure it runs before the first possible `startPlayer` call.
 
 ### 2.2 The `CartGatewayV4` interface
 

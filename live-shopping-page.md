@@ -37,37 +37,29 @@ renders your page's HTML (a template, a component, a raw `dangerouslySetInnerHTM
 ```html
 <!-- 1. The loader. data-livemeup-tenantname identifies your store. -->
 <script
-  defer
-  id="lmu-loader"
-  src="https://cdn.livemeup.io/landingpage.min.js"
-  data-livemeup-tenantname="your-store.myshopify.com"
+	defer
+	id='lmu-loader'
+	src='https://cdn.livemeup.io/landingpage.min.js'
+	data-livemeup-tenantname='your-store.myshopify.com'
 ></script>
 
 <!-- 2. The mount point. The script renders into this div. -->
 <div
-  id="livemeup-landingpage"
-  data-livemeup-language="EN"
-  data-livemeup-country="US"
-  data-thumbnails-size="250"
-  data-thumbnails-size-mobile="80"
-  data-highlight-section-full-width="false"
-  data-replay-section-full-width="false"
+	id='livemeup-landingpage'
+	data-livemeup-language='EN'
+	data-livemeup-country='US'
 ></div>
 ```
 
 What each attribute does:
 
-| Attribute | On | Meaning |
-|-----------|----|---------|
-| `id="lmu-loader"` | script | **Required.** The script finds itself by this id to read `data-livemeup-tenantname`. |
-| `data-livemeup-tenantname` | script | **Required.** Your store identifier — the Shopify permanent domain (`*.myshopify.com`). Sent as the `x-livemeup-tenant-name` header when the script fetches your events. |
-| `id="livemeup-landingpage"` | div | **Required.** The mount point the script renders into. |
-| `data-livemeup-language` | div | Storefront language ISO code, **upper-cased** (`EN`, `FR`). Passed to the player for currency/translations. Falls back to `window.Shopify?.locale`. |
-| `data-livemeup-country` | div | Storefront country ISO code (`US`, `FR`). Falls back to `window.Shopify?.country`. |
-| `data-thumbnails-size` | div | Replay thumbnail size in px (desktop). |
-| `data-thumbnails-size-mobile` | div | Replay thumbnail size on mobile (% of width). |
-| `data-highlight-section-full-width` | div | `"true"`/`"false"` — stretch the upcoming-events section to full page width. |
-| `data-replay-section-full-width` | div | `"true"`/`"false"` — stretch the replays section to full page width. |
+| Attribute                   | On     | Meaning                                                                                                                                                                  |
+|-----------------------------|--------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id="lmu-loader"`           | script | **Required.** The script finds itself by this id to read `data-livemeup-tenantname`.                                                                                     |
+| `data-livemeup-tenantname`  | script | **Required.** Your store identifier — the Shopify permanent domain (`*.myshopify.com`). Sent as the `x-livemeup-tenant-name` header when the script fetches your events. |
+| `id="livemeup-landingpage"` | div    | **Required.** The mount point the script renders into.                                                                                                                   |
+| `data-livemeup-language`    | div    | Storefront language ISO code, **upper-cased** (`EN`, `FR`). Passed to the player for currency/translations. Falls back to `window.Shopify?.locale`.                      |
+| `data-livemeup-country`     | div    | Storefront country ISO code (`US`, `FR`). Falls back to `window.Shopify?.country`.                                                                                       |
 
 > On a standard Shopify theme the same bundle is delivered as the **"Widget Live & Replay Page"** theme app
 > extension block, which fills these attributes for you. On a headless storefront you supply them yourself —
@@ -133,59 +125,36 @@ Notes:
 
 - **`highlightedEvents`** are your upcoming/live events. Use `status` + `showTime` to decide what CTA to
   render (see 2.3).
-- **`publishedReplayEvents`** are your on-demand replays. Each one opens with `startPlayer(event.id)`.
+- **`publishedReplayEvents`** are your replays.
 - **`status`** values you'll actually branch on: `PLANNED` (scheduled, show a countdown + Notify me),
   `ON_AIR` (live now, show Watch live), `FINISHED` (just ended, replay coming soon). `REPLAY` items are
   the published replays.
 
 ### 2.3 Rendering the upcoming-events CTA
 
-For each highlighted event, branch on `status` and `showTime`:
+For each event in `highlightedEvents`, pick the CTA from its `status` (and `showTime`):
 
-```js
-function renderHighlightedEventCTA(event, { askEmail, askSMS }) {
-  const startsInMs = event.showTime ? new Date(event.showTime).getTime() - Date.now() : -1;
+- **`ON_AIR`** (or `showTime` already passed) → a **Watch live** button that calls `startPlayer(event.id)`.
+- **`PLANNED`** → a countdown to `showTime`, plus a **Notify me** button *if* the store collects reminders
+  (`askEmail || askSMS`).
+- **`FINISHED`** → a **Replay coming soon** label (no action yet).
 
-  if (event.status === 'ON_AIR' || (event.showTime && startsInMs <= 0)) {
-    // Live now → "Watch live" button opens the player.
-    return watchLiveButton(() => startPlayer(event.id));
-  }
-
-  if (event.status === 'FINISHED') {
-    // Just ended → "Replay coming soon" (no action yet).
-    return replayComingSoonLabel();
-  }
-
-  // PLANNED (in the future) → countdown + "Notify me" (only if the store collects email/SMS).
-  startCountdown(event.showTime, event.id);
-  return askEmail || askSMS
-    ? notifyMeButton(() => openRemindersModal(event, { askEmail, askSMS }))
-    : null; // no CTA if reminders aren't enabled for this store
-}
-
-function startPlayer(eventId, t) {
-  import('https://cdn.livemeup.io/player.esm.js').then(({ startPlayer }) => {
-    startPlayer(eventId, { t, language: 'EN', country: 'US' });
-  });
-}
-```
-
-> The **Notify me** flow (collecting an email / SMS to remind the shopper before the event) is optional and
-> depends on your plan. If you don't want to build it, just don't render a CTA for `PLANNED` events, or link
-> shoppers to wherever they can subscribe.
+> The **Notify me** flow (collecting an email/SMS reminder) is optional and plan-dependent. Skip it and just
+> omit the CTA for `PLANNED` events. If you do want to build it:
+>
+> - **SMS reminders** — register the shopper's number through the Live Me Up **event-reminders API**
+>   ([reference](https://cdn.livemeup.io/openapi.external.html#tag/event-reminders)).
+> - **Email reminders** — Live Me Up sends these via **Klaviyo**. If you already use Klaviyo, subscribe the
+>   shopper directly through your own Klaviyo integration.
+>
+> Use `askEmail` / `askSMS` from the response to decide which inputs to show — they reflect what the store's
+> plan and integrations support.
 
 ### 2.4 Rendering the replays
 
-Each replay is a thumbnail that opens the player on click:
-
-```js
-function renderReplay(event) {
-  const img = buildImageCDNLink(event.coverUrl || event.preEventCoverUrl, 250, 432);
-  const el = thumbnailElement({ img, title: event.title, showTime: event.showTime });
-  el.onclick = () => startPlayer(event.id); // a replay id launches like any event id
-  return el;
-}
-```
+Each entry in `publishedReplayEvents` is a thumbnail that calls `startPlayer(event.id)` on click (a replay
+id launches like any event id). Build its cover from `coverUrl` (falling back to `preEventCoverUrl`) via the
+image CDN — see 2.5.
 
 ### 2.5 Resolving cover images
 
@@ -203,7 +172,8 @@ The reference page uses portrait `250×432` for replay posters.
 ### 2.6 Don't forget the cart gateway
 
 The page launches the **player**, so on a headless storefront you must register
-`window.LiveMeUpCartGatewayV4` before the first click — see the [Player & Cart Gateway guide](01-player-and-cart-gateway.md).
+`window.LiveMeUpCartGatewayV4` before the first click — see
+the [Player & Cart Gateway guide](player-and-cart-gateway.md).
 
 ---
 
@@ -224,7 +194,8 @@ The page launches the **player**, so on a headless storefront you must register
   `*.myshopify.com` domain).
 - [ ] Rendered `highlightedEvents`, branching on `status`/`showTime` → countdown / Notify me / Watch live.
 - [ ] Rendered `publishedReplayEvents`; each thumbnail calls `startPlayer(event.id)` on click.
-- [ ] Resolved cover images through `https://chquwzbkea.cloudimg.io/<coverUrl>?width=…&height=…&force_format=webp%2Cjpeg`.
+- [ ] Resolved cover images through
+  `https://chquwzbkea.cloudimg.io/<coverUrl>?width=…&height=…&force_format=webp%2Cjpeg`.
 - [ ] Passed `language` + `country` to `startPlayer`.
 - [ ] Registered the **cart gateway** (`window.LiveMeUpCartGatewayV4`) before any player launch — see the
-  [Player & Cart Gateway guide](01-player-and-cart-gateway.md).
+  [Player & Cart Gateway guide](player-and-cart-gateway.md).

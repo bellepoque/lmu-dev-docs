@@ -31,12 +31,12 @@ open the player in playlist mode on click.
 The widget is driven by a **`media_collections`** metafield whose owner depends on where the widget is
 placed:
 
-| Page template | Metafield owner | Liquid access |
-|---------------|-----------------|---------------|
-| Home (`index`) | Shop | `shop.metafields.app--5813997--media_collections.media_collection` |
-| Product | Product | `product.metafields.app--5813997--media_collections.media_collection` |
-| Collection | Collection | `collection.metafields.app--5813997--media_collections.media_collection` |
-| Page | Page | `page.metafields.app--5813997--media_collections.media_collection` |
+| Page placement  | Metafield owner | Storefront query root   |
+|-----------------|-----------------|-------------------------|
+| Home            | Shop            | `shop`                  |
+| Product page    | Product         | `product(handle: …)`    |
+| Collection page | Collection      | `collection(handle: …)` |
+| Page            | Page            | `page(handle: …)`       |
 
 - **Namespace:** `app--5813997--media_collections`
 - **Key:** `media_collection`
@@ -48,10 +48,10 @@ If the metafield is **absent or empty**, render nothing — there's no playlist 
 The resolved collection metaobject gives you:
 
 ```ts
-{
-  system: { handle: string };   // the mediaCollectionId — pass to startPlayerCollection
-  medias_infos: MediaInfo[];     // the ordered list of videos
-}
+type MediaCollection = {
+  handle: string;            // the mediaCollectionId — pass to startPlayerCollection
+  medias_infos: MediaInfo[]; // ordered list of videos (parsed from the medias_infos JSON field)
+};
 
 type MediaInfo = {
   mediaId: string;               // id of the replay/event (also resolves the lmu_replay metaobject)
@@ -59,21 +59,41 @@ type MediaInfo = {
   endTimestamp: number | null;   // ms offset to stop at
   videoUrl: string;              // HLS (.m3u8) URL for the inline preview (Carousel style)
   largeThumbnailUrl?: string;    // optional portrait poster image path
+};
+```
+
+**Reading it (Storefront GraphQL).** All these definitions have **storefront public read** access. First
+read the metafield and follow its metaobject reference (example uses the home page → `shop`; swap in
+`product(handle: …)`, `collection(handle: …)`, or `page(handle: …)` for the other placements):
+
+```graphql
+query Playlist {
+  shop {
+    metafield(namespace: "app--5813997--media_collections", key: "media_collection") {
+      reference {
+        ... on Metaobject {
+          handle # the mediaCollectionId → startPlayerCollection
+          mediasInfos: field(key: "medias_infos") {
+            value # JSON string: [{ mediaId, startTimestamp, endTimestamp, videoUrl, largeThumbnailUrl }]
+          }
+        }
+      }
+    }
+  }
 }
 ```
 
-For each item's **title and cover image**, resolve the `lmu_replay` metaobject by `mediaId`:
+Then resolve each item's **title and cover** from the `lmu_replay` metaobject (`$handle` is the item's
+`mediaId`):
 
-- Metaobject type: `lmu_replay`, looked up by `mediaId`
-- Fields used: `title` (string) and `image` (image path → resolve through the image CDN)
-
-```liquid
-{% assign media = shop.metaobjects.lmu_replay[media_infos.mediaId] %}
-{% assign cover = 'https://chquwzbkea.cloudimg.io/' | append: media.image | append: '?width=250&height=432&force_format=webp%2Cjpeg' %}
+```graphql
+query Replay($handle: String!) {
+  metaobject(handle: { type: "lmu_replay", handle: $handle }) {
+    title: field(key: "title") { value }
+    image: field(key: "image") { value }   # an image path → build the CDN URL (see step 1 of "Building it")
+  }
+}
 ```
-
-Headless: read the `media_collections` metafield and the `lmu_replay` metaobjects via the Storefront
-GraphQL API the same way.
 
 ---
 
@@ -85,13 +105,14 @@ Loop over `medias_infos`, resolving each `lmu_replay` for its `title` + `image`.
 with its **0-based index** in the collection — that's the `startIndex` you'll open the player at.
 
 ```html
-<div class="lmuPlaylist">
-  <!-- one per media, in order; data-index = forloop index, starting at 0 -->
-  <div class="lmuPlaylistItem" data-index="0">
-    <img src="https://chquwzbkea.cloudimg.io/<image>?width=250&height=432&force_format=webp%2Cjpeg" />
-    <p class="lmuPlaylistTitle">Episode title</p>
-  </div>
-  <!-- … -->
+
+<div class='lmuPlaylist'>
+	<!-- one per media, in order; data-index = forloop index, starting at 0 -->
+	<div class='lmuPlaylistItem' data-index='0'>
+		<img src='https://chquwzbkea.cloudimg.io/<image>?width=250&height=432&force_format=webp%2Cjpeg' />
+		<p class='lmuPlaylistTitle'>Episode title</p>
+	</div>
+	<!-- … -->
 </div>
 ```
 
@@ -99,7 +120,7 @@ with its **0-based index** in the collection — that's the `startIndex` you'll 
   mobile.
 - **Carousel style:** portrait `9:16` posters, horizontal scroll with snap. Optionally overlay a `muted
   loop playsinline` `<video lmuVideoUrl="<videoUrl>">` that plays the HLS preview (use HLS.js — see the
-  [Pop Me Up guide](05-pop-me-up-widget.md) for the HLS loading pattern). Start the preview at `startTimestamp`.
+  [Pop Me Up guide](pop-me-up-widget.md) for the HLS loading pattern). Start the preview at `startTimestamp`.
 
 ### 2. Open the player in playlist mode
 
@@ -121,7 +142,8 @@ document.querySelectorAll('.lmuPlaylistItem').forEach((el) => {
 ```
 
 `mediaCollectionId` is the collection metaobject's `system.handle`. `startIndex` is the clicked item's
-position. See the [Player & Cart Gateway guide](01-player-and-cart-gateway.md) for the full `startPlayerCollection` contract.
+position. See the [Player & Cart Gateway guide](player-and-cart-gateway.md) for the full `startPlayerCollection`
+contract.
 
 ### 3. Autoplay deep-link (optional)
 
@@ -146,7 +168,7 @@ if (autoplayId) {
   } else {
     import('https://cdn.livemeup.io/player.esm.js').then(({ startPlayer }) => {
       startPlayer(autoplayId, t == null ? { language: 'EN', country: 'US' }
-                                        : { t: Number(t), language: 'EN', country: 'US' });
+        : { t: Number(t), language: 'EN', country: 'US' });
     });
   }
 }
@@ -155,7 +177,8 @@ if (autoplayId) {
 ### 4. Don't forget the cart gateway
 
 Playlist mode launches the **player**, so on a headless storefront register
-`window.LiveMeUpCartGatewayV4` before the first click — see the [Player & Cart Gateway guide](01-player-and-cart-gateway.md).
+`window.LiveMeUpCartGatewayV4` before the first click — see
+the [Player & Cart Gateway guide](player-and-cart-gateway.md).
 
 > **Native apps (Tapcart):** the reference blocks also branch on `window.Tapcart` to open the player inside
 > a Tapcart hybrid screen instead of the web player. Ignore this unless you're integrating a Tapcart app.

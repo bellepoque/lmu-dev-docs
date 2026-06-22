@@ -45,16 +45,8 @@ Its JSON value:
 
 **If the metafield is absent or empty for a product, render nothing** — that product has no replay.
 
-**Reading it in Liquid (theme):**
-
-```liquid
-{% assign last_replay = product.metafields.app--5813997.last_replay_with_product_highlighted.value %}
-{% assign replayId = last_replay.replayId %}
-{% assign timecode = last_replay.timecode %}
-{% assign videoUrl = last_replay.videoUrl %}
-```
-
-**Reading it headless (Storefront GraphQL):**
+**Reading it (Storefront GraphQL).** The metafield definition has **storefront public read** access, so
+your storefront token can query it:
 
 ```graphql
 query ProductReplay($handle: String!) {
@@ -73,8 +65,19 @@ Parse `value` as JSON to get `replayId` / `timecode` / `videoUrl`.
 For a nicer presentation you can also resolve the replay's title and cover image from the `lmu_replay`
 **metaobject**, keyed by the `replayId` from the metafield:
 
-- Metaobject type: `lmu_replay`, looked up by `replayId`
+- Metaobject type: `lmu_replay`, looked up by the `replayId` (it's the metaobject's handle)
 - Fields used: `title` (string) and `image` (an image path)
+
+Resolve it with a second Storefront query (`$handle` is the `replayId` from the metafield):
+
+```graphql
+query Replay($handle: String!) {
+  metaobject(handle: { type: "lmu_replay", handle: $handle }) {
+    title: field(key: "title") { value }
+    image: field(key: "image") { value }   # an image path — build the CDN URL below
+  }
+}
+```
 
 The cover image is served through the image CDN. Build the URL as:
 
@@ -190,7 +193,7 @@ Notes on the preview clip:
 ### Don't forget the cart gateway
 
 Clicking the widget launches the **player**, so on a headless storefront register
-`window.LiveMeUpCartGatewayV4` before the first click — see the [Player & Cart Gateway guide](01-player-and-cart-gateway.md).
+`window.LiveMeUpCartGatewayV4` before the first click — see the [Player & Cart Gateway guide](player-and-cart-gateway.md).
 
 ---
 
@@ -207,4 +210,4 @@ Clicking the widget launches the **player**, so on a headless storefront registe
 - [ ] *(Optional)* Muted, `playsinline`, on-screen-only **HLS preview** via `https://cdn.livemeup.io/hls.js`,
   seeking to `timecode / 1000` (seconds).
 - [ ] Pass `language` + `country`; register the **cart gateway** on headless storefronts (see the [Player &
-  Cart Gateway guide](01-player-and-cart-gateway.md)).
+  Cart Gateway guide](player-and-cart-gateway.md)).

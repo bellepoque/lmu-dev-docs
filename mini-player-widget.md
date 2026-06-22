@@ -10,7 +10,7 @@ The **Mini Player** is a small floating thumbnail pinned to the corner of *every
 Live Shopping event is currently live**. The thumbnail shows a muted, real-time preview of the live stream
 (via Agora); clicking it launches the full Live Me Up player. When no event is live, nothing is shown.
 
-On a headless storefront you rebuild it yourself. Everything you need lives in a single Shopify shop
+Everything you need lives in a single Shopify shop
 metafield; the rest is an Agora live preview + a `startPlayer` call.
 
 > **Production URLs** (see the [overview](README.md)): player ES module →
@@ -47,17 +47,21 @@ Its JSON value:
 A non-empty **`eventId`** and **`viewerToken`** is your signal that a live event is running and the widget
 should be shown.
 
-**Reading it in Liquid (theme):**
+**Reading it (Storefront GraphQL).** The metafield definition has **storefront public read** access, so
+your storefront token can query it. Parse `value` as JSON:
 
-```liquid
-{% assign eventInfos = shop.metafields.app--5813997--current_live.event_infos %}
-{% if eventInfos.value.eventId != blank and eventInfos.value.viewerToken != blank %}
-  ...
-{% endif %}
+```graphql
+query CurrentLive {
+  shop {
+    metafield(namespace: "app--5813997--current_live", key: "event_infos") {
+      value
+      # JSON string: { appId, channelName, coverUrl, eventId, eventTitle, streamProvider, viewerToken }
+    }
+  }
+}
 ```
 
-**Reading it headless (Storefront GraphQL):** query the same shop metafield, namespace
-`app--5813997--current_live`, key `event_infos`, and parse `value` as JSON.
+When no event is live the metafield is absent or its `value` is `{}` — render nothing in that case.
 
 ---
 
@@ -138,7 +142,8 @@ import('https://cdn.livemeup.io/player.esm.js').then(({ startPlayer }) => {
 });
 ```
 
-See the [Player & Cart Gateway guide](01-player-and-cart-gateway.md) for the full `startPlayer` contract and — on a headless
+See the [Player & Cart Gateway guide](player-and-cart-gateway.md) for the full `startPlayer` contract and — on a
+headless
 storefront — the **cart gateway** you must register so add-to-cart from the player works.
 
 ---
@@ -156,4 +161,4 @@ storefront — the **cart gateway** you must register so add-to-cart from the pl
 - [ ] On click, `import('https://cdn.livemeup.io/player.esm.js')` and call `startPlayer(eventId, {
   language, country })`.
 - [ ] On a headless storefront, register the **cart gateway** (`window.LiveMeUpCartGatewayV4`) — see the
-  [Player & Cart Gateway guide](01-player-and-cart-gateway.md).
+  [Player & Cart Gateway guide](player-and-cart-gateway.md).

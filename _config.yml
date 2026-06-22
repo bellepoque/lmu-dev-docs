@@ -1,0 +1,34 @@
+# GitHub Pages / Jekyll site configuration.
+# These docs use the "Just the Docs" theme, pulled in via remote_theme (no gem install needed).
+
+title: Live Me Up — Integration Docs
+description: Integrate the Live Me Up player and widgets on a headless / custom storefront.
+
+# IMPORTANT for a PROJECT page (URL like https://<user>.github.io/<repo>/):
+# uncomment and set baseurl to "/<repo>" — otherwise the theme's CSS/JS load from the wrong
+# path and the site renders unstyled. Leave it empty/commented for a user-or-org page
+# (repo named <user>.github.io) or a custom domain, which serve from the root.
+baseurl: "/lmu-dev-docs"
+
+# Theme is fetched from github.com/just-the-docs/just-the-docs at build time.
+# Pinned to a release tag for reproducible builds — bump to the latest tag as desired:
+#   https://github.com/just-the-docs/just-the-docs/releases
+remote_theme: just-the-docs/just-the-docs@v0.12.0
+
+# GitHub Pages auto-enables these, but listing them keeps local `bundle exec jekyll serve` working too.
+plugins:
+  - jekyll-remote-theme       # lets remote_theme work
+  - jekyll-relative-links     # rewrites [text](01-foo.md) links to the built .html
+  - jekyll-titles-from-headings
+  - jekyll-seo-tag            # required by Just the Docs ({% seo %} tag)
+  - jekyll-include-cache      # required by Just the Docs ({% include_cached %} tag)
+
+# --- Just the Docs options ---
+color_scheme: light
+search_enabled: true
+heading_anchors: true
+
+# Optional links shown in the top-right of every page.
+aux_links:
+  "livemeup.io": "https://www.livemeup.io"
+aux_links_new_tab: true

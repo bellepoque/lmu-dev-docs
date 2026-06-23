@@ -169,7 +169,28 @@ function buildImageCDNLink(imagePath, width, height) {
 
 The reference page uses portrait `250×432` for replay posters.
 
-### 2.6 Don't forget the cart gateway
+### 2.6 Autoplay
+
+The bundle can launch the player **automatically on page load**, in two cases:
+
+- **From a share link.** *Share* buttons produce a URL with an `autoplay-live-shopping-be=<eventId>` query
+  param (and an optional `t=<seconds>` start offset). When the page loads with that param, the bundle
+  immediately calls `startPlayer(eventId, t)` so the shared event opens straight into the player.
+- **A single live event.** If there's no autoplay param but exactly **one** `highlightedEvents` entry is
+  `ON_AIR`, the bundle autoplays it — landing on the page during a live drops the shopper straight into the
+  stream.
+
+In both cases the bundle also **hides the site-wide [Live Now Widget](mini-player-widget.md)** (it injects a
+`#lmuLiveWidgetContainer { display: none !important; }` style rule) so the floating widget and the
+full-page player never run the same stream at once.
+
+**Why you have to reimplement it:** none of this is server-side — it lives in the bundle's load sequence. On
+Solution 2 the bundle isn't running, so on page load you must read the `autoplay-live-shopping-be` (and `t`)
+query params yourself and, failing that, check for a lone `ON_AIR` event, then call `startPlayer(...)` and
+hide your own live-now widget — otherwise share links won't deep-link into the player and going live won't
+auto-open it.
+
+### 2.7 Don't forget the cart gateway
 
 The page launches the **player**, so on a headless storefront you must register
 `window.LiveMeUpCartGatewayV4` before the first click — see
@@ -197,5 +218,7 @@ the [Player & Cart Gateway guide](player-and-cart-gateway.md).
 - [ ] Resolved cover images through
   `https://chquwzbkea.cloudimg.io/<coverUrl>?width=…&height=…&force_format=webp%2Cjpeg`.
 - [ ] Passed `language` + `country` to `startPlayer`.
+- [ ] Handled **autoplay**: on load, read `autoplay-live-shopping-be` (+ `t`) → `startPlayer`; else autoplay
+  a lone `ON_AIR` event; hide your own live-now widget when autoplaying.
 - [ ] Registered the **cart gateway** (`window.LiveMeUpCartGatewayV4`) before any player launch — see the
   [Player & Cart Gateway guide](player-and-cart-gateway.md).

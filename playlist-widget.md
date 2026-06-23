@@ -121,8 +121,32 @@ with its **0-based index** in the collection — that's the `startIndex` you'll 
 - **Carousel style:** portrait `9:16` posters, horizontal scroll with snap. Optionally overlay a `muted
   loop playsinline` `<video lmuVideoUrl="<videoUrl>">` that plays the HLS preview (use HLS.js — see the
   [Pop Me Up guide](pop-me-up-widget.md) for the HLS loading pattern). Start the preview at `startTimestamp`.
+  The Carousel **auto-plays** those previews — see step 2 for how.
 
-### 2. Open the player in playlist mode
+### 2. Carousel preview autoplay (optional)
+
+The Carousel style auto-plays the poster previews, but deliberately **not all at once** — the reference
+widget orchestrates them to respect browser autoplay rules and keep bandwidth bounded. (The **Stories**
+style has no video previews — static bubbles only — so skip this section if you only ship Stories.)
+
+- **One at a time.** Only a single preview ever plays; starting one stops the previous (track a
+  `currentlyPlaying` index, pause + reset the old `<video>` before playing the new one).
+- **Only while the carousel is on screen.** An `IntersectionObserver` starts the active preview when the
+  carousel scrolls into view (`threshold: 0.5`) and stops it when it leaves (`threshold: 0`) — no playback
+  off-screen.
+- **User-activation gate.** Browsers block even muted autoplay until the visitor has interacted with the
+  page. The widget waits for the first user activity (`navigator.userActivation.hasBeenActive` /
+  `isActive`, or a `mousemove`) before loading HLS.js and starting playback. A
+  `window.lmu_carousel_start_first_video_without_user_input = true` flag opts out and plays the first video
+  immediately.
+- **Desktop — hover to play.** `mouseenter` on a poster starts *that* poster's preview.
+- **Mobile (`window.innerWidth < 900`) — scroll-snap to play.** After the horizontal scroll settles
+  (debounced ~100ms), the first poster still in view starts playing automatically.
+- **Lightweight HLS.** Previews use `autoStartLoad: false` + `capLevelToPlayerSize: true` + a short
+  `maxMaxBufferLength` (~6s); seek the `<video>` to `startTimestamp` (ms → `currentTime` in seconds) and
+  call `hls.startLoad(startTimestamp)` only when the preview should actually play.
+
+### 3. Open the player in playlist mode
 
 Clicking any item opens the **whole collection** at that item's index, so the viewer can swipe through:
 
@@ -145,7 +169,7 @@ document.querySelectorAll('.lmuPlaylistItem').forEach((el) => {
 position. See the [Player & Cart Gateway guide](player-and-cart-gateway.md) for the full `startPlayerCollection`
 contract.
 
-### 3. Autoplay deep-link (optional)
+### 4. Autoplay deep-link
 
 The widgets support opening the player automatically from a URL — used by "watch this event" links shared
 from the console. Check two query params on load:
@@ -174,7 +198,7 @@ if (autoplayId) {
 }
 ```
 
-### 4. Don't forget the cart gateway
+### 5. Don't forget the cart gateway
 
 Playlist mode launches the **player**, so on a headless storefront register
 `window.LiveMeUpCartGatewayV4` before the first click — see
@@ -197,5 +221,9 @@ the [Player & Cart Gateway guide](player-and-cart-gateway.md).
   `startPlayerCollection({ mediaCollectionId: <system.handle>, startIndex }, { language, country })`.
 - [ ] *(Carousel style)* Optional muted, looping, `playsinline` HLS **video preview** per poster, starting
   at `startTimestamp`.
+- [ ] *(Carousel autoplay)* If you autoplay previews: play **one at a time**, only while the carousel is
+  **on screen** (`IntersectionObserver`), gate the first play on **user activation** (or
+  `lmu_carousel_start_first_video_without_user_input`), **hover-to-play** on desktop and **scroll-snap** to
+  the visible poster on mobile (`< 900px`).
 - [ ] *(Optional)* Handle the `autoplay-live-shopping-be` (+ `t` in ms) deep-link.
 - [ ] Pass `language` + `country`; register the **cart gateway** on headless storefronts.

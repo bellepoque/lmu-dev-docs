@@ -57,6 +57,9 @@ type PlayerParams = {
   chatNickname?: string;
   // Show the close (X) button. Defaults to true.
   showCloseButton?: boolean;
+  // Set to true when you embed the player in a mobile app (native app / webview) rather than a
+  // website. Defaults to false. See the note below.
+  isInMobileApp?: boolean;
   // Share button configuration. Defaults to { active: true }.
   // active: false hides the share button. When active, optionally pass `url` to override the
   // link shown in the share modal (defaults to the current page URL).
@@ -80,6 +83,9 @@ type MediaCollectionParams = {
   country?: string;
   chatNickname?: string;
   showCloseButton?: boolean;
+  // Set to true when you embed the player in a mobile app (native app / webview) rather than a
+  // website. Defaults to false. See the note below.
+  isInMobileApp?: boolean;
   // Share button configuration. Defaults to { active: true }.
   // active: false hides the share button. When active, optionally pass `url` to override the
   // link shown in the share modal (defaults to the current page URL).
@@ -130,6 +136,13 @@ Where to get the values: in the standard Shopify theme widgets these come straig
 use the **same market/locale the shopper has currently selected** — i.e. the exact `country` and
 `language` values you already pass to Shopify's Storefront API `@inContext(country:, language:)` directive
 when fetching prices. Reusing those guarantees the player's currency matches the rest of your store.
+
+**`isInMobileApp`.** Leave it `false` (the default) when the player is embedded in a website. Set it to
+`true` when you embed the player inside a **mobile app** (a native app or an in-app webview) instead of a
+web page. This tells the player it is not running on a shareable storefront URL, so the **share link** is
+built from your live shopping page / storefront domain rather than the current page URL (which, in an app,
+is not a page shoppers can open). You can still override the link explicitly with the `share.url` param —
+it takes priority regardless of `isInMobileApp`.
 
 ### 1.3 Where do event / replay ids come from?
 

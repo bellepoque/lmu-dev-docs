@@ -66,7 +66,7 @@ type PlayerParams = {
   share?: { active: false } | { active: true; url?: string };
   // Storefront API token of your sales channel. Defaults to an Online Store token provided by
   // Live Me Up. See the note below.
-  storefrontAccessToken?: string;
+  storefrontToken?: string;
   // Called when the viewer closes the player.
   onClose?: () => void;
 };
@@ -93,7 +93,7 @@ type MediaCollectionParams = {
   // active: false hides the share button. When active, optionally pass `url` to override the
   // link shown in the share modal (defaults to the current page URL).
   share?: { active: false } | { active: true; url?: string };
-  storefrontAccessToken?: string;
+  storefrontToken?: string;
   onClose?: () => void;
 };
 ```
@@ -148,7 +148,7 @@ built from your live shopping page / storefront domain rather than the current p
 is not a page shoppers can open). You can still override the link explicitly with the `share.url` param —
 it takes priority regardless of `isInMobileApp`.
 
-**`storefrontAccessToken`.** By default the player uses an Online Store token provided by Live Me Up, so
+**`storefrontToken`.** By default the player uses an Online Store token provided by Live Me Up, so
 products, prices and availability are those of your Online Store channel, which may differ from your
 sales channel. Pass your sales channel's Storefront API token to show what your shoppers can actually buy.
 It needs the `unauthenticated_read_product_listings`, `unauthenticated_read_product_inventory` and
@@ -479,4 +479,4 @@ Subscriptions need the Scale plan or above, and only recurring selling plans are
 - [ ] **Selling plans:** set `supportsSellingPlans: true`, pass `sellingPlanId` to your cart in
   `addToCart`, and return each line's `sellingPlanId` from `getContent`.
 - [ ] **Selling on another channel than the Online Store?** Pass its Storefront API token as
-  `storefrontAccessToken` on every `startPlayer` / `startPlayerCollection` call.
+  `storefrontToken` on every `startPlayer` / `startPlayerCollection` call.

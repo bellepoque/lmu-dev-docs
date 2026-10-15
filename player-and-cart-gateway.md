@@ -208,8 +208,8 @@ type CartGatewayV4 = {
   // Tag/attach the originating video id to a cart line (for sale attribution).
   flagLineForSaleTracking(line: FlagLineParamsV4): Promise<void>;
 
-  // Send the shopper to checkout.
-  validateCart(): Promise<void>;
+  // Send the shopper to checkout, or to the cart page, as the merchant chose.
+  validateCart(params: ValidateCartParamsV4): Promise<void>;
 
   // Marked optional in the type for backward-compatibility, but you SHOULD implement it.
   // Apply discount/promo codes to the cart. Without it, FLASH-SALE DISCOUNTS WILL NOT APPLY
@@ -220,6 +220,12 @@ type CartGatewayV4 = {
   // Attach a Live Me Up user id to the cart. Without it, SALE ATTRIBUTION IS BROKEN
   // (purchases can't be tied back to the viewer / live session for analytics).
   tagCartWithUserId?(userId: string): Promise<void>;
+};
+
+type ValidateCartParamsV4 = {
+  // Where the merchant sends shoppers from the player, set in the Live Me Up app's settings:
+  // "CHECKOUT" for the checkout, "CART" for the storefront's cart page.
+  checkoutDestination: 'CHECKOUT' | 'CART';
 };
 
 type AddToCartParamsV4 = {
@@ -363,9 +369,9 @@ window.LiveMeUpCartGatewayV4 = {
     if (!res.ok) throw new Error(`flagLineForSaleTracking failed: ${res.status}`);
   },
 
-  async validateCart() {
-    // navigate the shopper to checkout however your storefront does it
-    window.location.href = `${ROOT}checkout`;
+  async validateCart({ checkoutDestination }) {
+    // navigate the shopper to the cart page or to checkout however your storefront does it
+    window.location.href = checkoutDestination === 'CART' ? `${ROOT}cart` : `${ROOT}checkout`;
   },
 
   // Optional:
@@ -405,8 +411,8 @@ window.LiveMeUpCartGatewayV4 = {
   },                 // "no cart yet"
   async updateQuantities() {
   },
-  async validateCart() {
-    window.location.href = '/checkout';
+  async validateCart({ checkoutDestination }) {
+    window.location.href = checkoutDestination === 'CART' ? '/cart' : '/checkout';
   },
 
   // ⚠️ Stubs below DISABLE features — replace with real implementations (see 2.4 and 2.5):

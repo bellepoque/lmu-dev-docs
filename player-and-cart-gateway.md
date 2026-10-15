@@ -64,6 +64,9 @@ type PlayerParams = {
   // active: false hides the share button. When active, optionally pass `url` to override the
   // link shown in the share modal (defaults to the current page URL).
   share?: { active: false } | { active: true; url?: string };
+  // Storefront API token of your sales channel. Defaults to an Online Store token provided by
+  // Live Me Up. See the note below.
+  storefrontToken?: string;
   // Called when the viewer closes the player.
   onClose?: () => void;
 };
@@ -90,6 +93,7 @@ type MediaCollectionParams = {
   // active: false hides the share button. When active, optionally pass `url` to override the
   // link shown in the share modal (defaults to the current page URL).
   share?: { active: false } | { active: true; url?: string };
+  storefrontToken?: string;
   onClose?: () => void;
 };
 ```
@@ -144,6 +148,12 @@ built from your live shopping page / storefront domain rather than the current p
 is not a page shoppers can open). You can still override the link explicitly with the `share.url` param —
 it takes priority regardless of `isInMobileApp`.
 
+**`storefrontToken`.** By default the player uses an Online Store token provided by Live Me Up, so
+products, prices and availability are those of your Online Store channel, which may differ from your
+sales channel. Pass your sales channel's Storefront API token to show what your shoppers can actually buy.
+It needs the `unauthenticated_read_product_listings`, `unauthenticated_read_product_inventory` and
+`unauthenticated_read_selling_plans` scopes. Pass it on every `startPlayer` / `startPlayerCollection` call.
+
 ### 1.3 Where do event / replay ids come from?
 
 You never hard-code ids. Each widget reads them from a data source:
@@ -196,6 +206,9 @@ effect, so set it as early as possible (e.g. at app bootstrap).
 
 ```ts
 type CartGatewayV4 = {
+  // Set to true once addToCart and getContent handle sellingPlanId (see 2.7).
+  supportsSellingPlans?: boolean;
+
   // Add one variant to the cart. Returns the created line id.
   addToCart(params: AddToCartParamsV4): Promise<AddToCartResponseV4>;
 
@@ -225,6 +238,7 @@ type CartGatewayV4 = {
 type AddToCartParamsV4 = {
   cmsProductId: string;  // Shopify product GID, e.g. "gid://shopify/Product/123"
   cmsVariantId: string;  // Shopify variant GID, e.g. "gid://shopify/ProductVariant/456"
+  sellingPlanId: string | null; // selling plan GID, null for a one-time purchase
   videoId: string;       // the live/replay video id the add originated from
   quantity: number;
 };
@@ -253,6 +267,7 @@ type FlagLineParamsV4 = {
 type CartProductV4 = {
   cmsProductId: string;  // product GID
   cmsVariantId: string;  // variant GID
+  sellingPlanId?: string | null; // selling plan GID, null for a one-time purchase
   videoId?: string;
   quantity: number;
   lineId: string;
@@ -269,6 +284,7 @@ Skipping them does not crash the player, but it silently disables features:
 | `flagLineForSaleTracking`                                     | Per-line video sale attribution is lost (see 2.4). Implement if possible.               |
 | `addPromoCodes`                                               | **Flash-sale discounts never apply** — shoppers pay full price during live flash sales. |
 | `tagCartWithUserId`                                           | **Sale attribution is broken** — purchases can't be linked to the viewer/live session.  |
+| `supportsSellingPlans`                                        | Subscriptions are never offered — shoppers can only buy once (see 2.7).                 |
 
 ### 2.3 ID format — important
 
@@ -276,16 +292,20 @@ The player always speaks in **Shopify GIDs**, not numeric ids:
 
 - Product: `gid://shopify/Product/<numericId>`
 - Variant: `gid://shopify/ProductVariant/<numericId>`
+- Selling plan: `gid://shopify/SellingPlan/<numericId>`
 
 If your cart API needs numeric ids, strip the prefix; when returning data to the player, re-wrap them:
 
 ```js
 const PRODUCT_GID = 'gid://shopify/Product/';
 const VARIANT_GID = 'gid://shopify/ProductVariant/';
+const SELLING_PLAN_GID = 'gid://shopify/SellingPlan/';
 
 const toNumericVariant = (gid) => gid.replace(VARIANT_GID, '');
+const toNumericSellingPlan = (gid) => gid.replace(SELLING_PLAN_GID, '');
 const toVariantGid = (id) => (String(id).startsWith(VARIANT_GID) ? id : VARIANT_GID + id);
 const toProductGid = (id) => (String(id).startsWith(PRODUCT_GID) ? id : PRODUCT_GID + id);
+const toSellingPlanGid = (id) => (String(id).startsWith(SELLING_PLAN_GID) ? id : SELLING_PLAN_GID + id);
 ```
 
 ### 2.4 Sale attribution (`videoId`)
@@ -312,7 +332,9 @@ const USER_ID_PROP = '_lmu_user_id';
 const ROOT = '/'; // your cart API root
 
 window.LiveMeUpCartGatewayV4 = {
-  async addToCart({ cmsVariantId, videoId, quantity }) {
+  supportsSellingPlans: true,
+
+  async addToCart({ cmsVariantId, sellingPlanId, videoId, quantity }) {
     const res = await fetch(`${ROOT}cart/add.js`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -320,6 +342,7 @@ window.LiveMeUpCartGatewayV4 = {
         items: [{
           id: cmsVariantId.replace('gid://shopify/ProductVariant/', ''),
           quantity,
+          ...(sellingPlanId ? { selling_plan: sellingPlanId.replace('gid://shopify/SellingPlan/', '') } : {}),
           properties: { [SALE_TRACKER_PROP]: videoId },
         }],
       }),
@@ -338,6 +361,9 @@ window.LiveMeUpCartGatewayV4 = {
       .map((i) => ({
         cmsProductId: 'gid://shopify/Product/' + i.product_id,
         cmsVariantId: 'gid://shopify/ProductVariant/' + i.id,
+        sellingPlanId: i.selling_plan_allocation
+          ? 'gid://shopify/SellingPlan/' + i.selling_plan_allocation.selling_plan.id
+          : null,
         quantity: i.quantity,
         lineId: i.key,
         videoId: i.properties[SALE_TRACKER_PROP],
@@ -419,6 +445,19 @@ window.LiveMeUpCartGatewayV4 = {
 };
 ```
 
+### 2.7 Selling plans (subscriptions)
+
+To let shoppers subscribe to a product from the player:
+
+1. **Set `supportsSellingPlans: true`.**
+2. **Pass `sellingPlanId` to your cart in `addToCart`:** `selling_plan` (numeric) in a `cart/add.js` item,
+   or `sellingPlanId` in the Storefront API's `CartLineInput`.
+3. **Return each line's `sellingPlanId` from `getContent`:** from `selling_plan_allocation.selling_plan.id`
+   in `cart.js`, or `sellingPlanAllocation.sellingPlan.id` on a Storefront API cart line. A variant can be
+   in the cart twice, once bought once and once on subscription.
+
+Subscriptions need the Scale plan or above, and only recurring selling plans are offered.
+
 ---
 
 ## Checklist
@@ -437,3 +476,7 @@ window.LiveMeUpCartGatewayV4 = {
   features silently break.
 - [ ] **Set the `_lmu_video_id` line-item property** (or your equivalent) from `videoId` for sale
   attribution.
+- [ ] **Selling plans:** set `supportsSellingPlans: true`, pass `sellingPlanId` to your cart in
+  `addToCart`, and return each line's `sellingPlanId` from `getContent`.
+- [ ] **Selling on another channel than the Online Store?** Pass its Storefront API token as
+  `storefrontToken` on every `startPlayer` / `startPlayerCollection` call.

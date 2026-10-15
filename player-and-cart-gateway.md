@@ -64,6 +64,9 @@ type PlayerParams = {
   // active: false hides the share button. When active, optionally pass `url` to override the
   // link shown in the share modal (defaults to the current page URL).
   share?: { active: false } | { active: true; url?: string };
+  // Storefront API access token the player reads products, prices and selling plans with.
+  // Defaults to the token issued by the Live Me Up app. See the note below.
+  storefrontAccessToken?: string;
   // Called when the viewer closes the player.
   onClose?: () => void;
 };
@@ -90,6 +93,8 @@ type MediaCollectionParams = {
   // active: false hides the share button. When active, optionally pass `url` to override the
   // link shown in the share modal (defaults to the current page URL).
   share?: { active: false } | { active: true; url?: string };
+  // Storefront API access token, as in PlayerParams.
+  storefrontAccessToken?: string;
   onClose?: () => void;
 };
 ```
@@ -144,6 +149,19 @@ built from your live shopping page / storefront domain rather than the current p
 is not a page shoppers can open). You can still override the link explicitly with the `share.url` param —
 it takes priority regardless of `isInMobileApp`.
 
+**`storefrontAccessToken`.** The player reads product data (titles, prices, stock, selling plans) from
+your store's Storefront API, by default with the token the Live Me Up app created when it was installed.
+Pass `storefrontAccessToken` to make it use one of your own Storefront API tokens instead, for example the
+public token of your headless storefront. The store domain does not change: only the token does. The token
+needs these scopes:
+
+- `unauthenticated_read_product_listings`: products and prices.
+- `unauthenticated_read_product_inventory`: stock levels.
+- `unauthenticated_read_selling_plans`: subscriptions (see 2.7).
+
+A Storefront API token is public by design, so passing it from the browser is safe. Pass it on every
+`startPlayer` / `startPlayerCollection` call: a call without it goes back to the Live Me Up token.
+
 ### 1.3 Where do event / replay ids come from?
 
 You never hard-code ids. Each widget reads them from a data source:
@@ -196,6 +214,10 @@ effect, so set it as early as possible (e.g. at app bootstrap).
 
 ```ts
 type CartGatewayV4 = {
+  // Set to true once addToCart and getContent handle sellingPlanId. Without it the player only offers
+  // one-time purchases. See 2.7.
+  supportsSellingPlans?: boolean;
+
   // Add one variant to the cart. Returns the created line id.
   addToCart(params: AddToCartParamsV4): Promise<AddToCartResponseV4>;
 
@@ -225,6 +247,8 @@ type CartGatewayV4 = {
 type AddToCartParamsV4 = {
   cmsProductId: string;  // Shopify product GID, e.g. "gid://shopify/Product/123"
   cmsVariantId: string;  // Shopify variant GID, e.g. "gid://shopify/ProductVariant/456"
+  sellingPlanId: string | null; // Shopify selling plan GID, e.g. "gid://shopify/SellingPlan/789";
+                                // null for a one-time purchase. See 2.7.
   videoId: string;       // the live/replay video id the add originated from
   quantity: number;
 };
@@ -253,6 +277,7 @@ type FlagLineParamsV4 = {
 type CartProductV4 = {
   cmsProductId: string;  // product GID
   cmsVariantId: string;  // variant GID
+  sellingPlanId?: string | null; // selling plan GID of the line, null for a one-time purchase. See 2.7.
   videoId?: string;
   quantity: number;
   lineId: string;
@@ -269,6 +294,7 @@ Skipping them does not crash the player, but it silently disables features:
 | `flagLineForSaleTracking`                                     | Per-line video sale attribution is lost (see 2.4). Implement if possible.               |
 | `addPromoCodes`                                               | **Flash-sale discounts never apply** — shoppers pay full price during live flash sales. |
 | `tagCartWithUserId`                                           | **Sale attribution is broken** — purchases can't be linked to the viewer/live session.  |
+| `supportsSellingPlans`                                        | Subscriptions are never offered — shoppers can only buy once (see 2.7).                 |
 
 ### 2.3 ID format — important
 
@@ -276,16 +302,20 @@ The player always speaks in **Shopify GIDs**, not numeric ids:
 
 - Product: `gid://shopify/Product/<numericId>`
 - Variant: `gid://shopify/ProductVariant/<numericId>`
+- Selling plan: `gid://shopify/SellingPlan/<numericId>`
 
 If your cart API needs numeric ids, strip the prefix; when returning data to the player, re-wrap them:
 
 ```js
 const PRODUCT_GID = 'gid://shopify/Product/';
 const VARIANT_GID = 'gid://shopify/ProductVariant/';
+const SELLING_PLAN_GID = 'gid://shopify/SellingPlan/';
 
 const toNumericVariant = (gid) => gid.replace(VARIANT_GID, '');
+const toNumericSellingPlan = (gid) => gid.replace(SELLING_PLAN_GID, '');
 const toVariantGid = (id) => (String(id).startsWith(VARIANT_GID) ? id : VARIANT_GID + id);
 const toProductGid = (id) => (String(id).startsWith(PRODUCT_GID) ? id : PRODUCT_GID + id);
+const toSellingPlanGid = (id) => (String(id).startsWith(SELLING_PLAN_GID) ? id : SELLING_PLAN_GID + id);
 ```
 
 ### 2.4 Sale attribution (`videoId`)
@@ -312,7 +342,9 @@ const USER_ID_PROP = '_lmu_user_id';
 const ROOT = '/'; // your cart API root
 
 window.LiveMeUpCartGatewayV4 = {
-  async addToCart({ cmsVariantId, videoId, quantity }) {
+  supportsSellingPlans: true,
+
+  async addToCart({ cmsVariantId, sellingPlanId, videoId, quantity }) {
     const res = await fetch(`${ROOT}cart/add.js`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -320,6 +352,7 @@ window.LiveMeUpCartGatewayV4 = {
         items: [{
           id: cmsVariantId.replace('gid://shopify/ProductVariant/', ''),
           quantity,
+          ...(sellingPlanId ? { selling_plan: sellingPlanId.replace('gid://shopify/SellingPlan/', '') } : {}),
           properties: { [SALE_TRACKER_PROP]: videoId },
         }],
       }),
@@ -338,6 +371,9 @@ window.LiveMeUpCartGatewayV4 = {
       .map((i) => ({
         cmsProductId: 'gid://shopify/Product/' + i.product_id,
         cmsVariantId: 'gid://shopify/ProductVariant/' + i.id,
+        sellingPlanId: i.selling_plan_allocation
+          ? 'gid://shopify/SellingPlan/' + i.selling_plan_allocation.selling_plan.id
+          : null,
         quantity: i.quantity,
         lineId: i.key,
         videoId: i.properties[SALE_TRACKER_PROP],
@@ -419,6 +455,37 @@ window.LiveMeUpCartGatewayV4 = {
 };
 ```
 
+### 2.7 Selling plans (subscriptions)
+
+The player can offer a product **on subscription** next to the one-time purchase, priced from the product's
+Shopify selling plans. It does so only when all of these hold:
+
+- the shop's Live Me Up plan includes selling plans (Scale and above);
+- the cart gateway sets `supportsSellingPlans: true`;
+- the product has at least one **recurring** selling plan (a subscription). Other selling plans, such as
+  pre-orders or try-before-you-buy, are never offered;
+- the Storefront API token the player uses has the `unauthenticated_read_selling_plans` scope (the Live
+  Me Up token has it; check yours if you pass `storefrontAccessToken`).
+
+Otherwise the player offers the one-time purchase only. A product that **requires** a selling plan comes
+with its first recurring plan pre-selected.
+
+To support selling plans, your gateway must:
+
+1. **Set `supportsSellingPlans: true`.** It is read once, when the player starts.
+2. **Carry `sellingPlanId` in `addToCart`.** It is the selling plan GID the shopper picked, or `null` for a
+   one-time purchase. On the Shopify AJAX cart it is the numeric `selling_plan` of the `cart/add.js` item;
+   on the Storefront API Cart it is the `sellingPlanId` of the `CartLineInput` you send to `cartCreate` /
+   `cartLinesAdd`.
+3. **Return `sellingPlanId` from `getContent`.** The same variant can sit twice in the cart, once bought
+   once and once on subscription, and the player tells the two lines apart by their selling plan. Read it
+   from `selling_plan_allocation.selling_plan.id` on `cart.js`, or from
+   `sellingPlanAllocation.sellingPlan.id` on a Storefront API cart line, and return `null` for a line
+   without one.
+
+`updateQuantities` and `flagLineForSaleTracking` address lines by `lineId`, so they need no change. The
+reference implementation in 2.5 already does all three.
+
 ---
 
 ## Checklist
@@ -437,3 +504,8 @@ window.LiveMeUpCartGatewayV4 = {
   features silently break.
 - [ ] **Set the `_lmu_video_id` line-item property** (or your equivalent) from `videoId` for sale
   attribution.
+- [ ] **Selling plans:** set `supportsSellingPlans: true`, pass `sellingPlanId` to your cart in
+  `addToCart`, and return each line's `sellingPlanId` from `getContent`.
+- [ ] **Your own Storefront API token** (optional): pass it as `storefrontAccessToken` on every
+  `startPlayer` / `startPlayerCollection` call, with the product listings, inventory and selling plans
+  scopes.

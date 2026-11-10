@@ -227,6 +227,7 @@ type CartGatewayV4 = {
   // Marked optional in the type for backward-compatibility, but you SHOULD implement it.
   // Apply discount/promo codes to the cart. Without it, FLASH-SALE DISCOUNTS WILL NOT APPLY
   // (the shopper is charged full price even when a live flash sale is running).
+  // `codes` holds only the codes to add: keep the ones already on the cart (see 2.5).
   addPromoCodes?(codes: string[]): Promise<void>;
 
   // Marked optional in the type for backward-compatibility, but you SHOULD implement it.
@@ -396,10 +397,18 @@ window.LiveMeUpCartGatewayV4 = {
 
   // Optional:
   async addPromoCodes(codes) {
+    // The player passes only the codes to add: send the ones already on the cart along with them,
+    // or a second flash-sale product would drop the first one's discount.
+    const cartRes = await fetch(`${ROOT}cart.js`);
+    if (!cartRes.ok) throw new Error(`addPromoCodes failed: ${cartRes.status}`);
+    const cart = await cartRes.json();
+    const existingCodes = (cart.discount_codes ?? []).map((d) => d.code);
+    const mergedCodes = [...new Set([...existingCodes, ...codes])];
+
     const res = await fetch(`${ROOT}cart/update.js`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ discount: codes.join(',') }),
+      body: JSON.stringify({ discount: mergedCodes.join(',') }),
     });
     if (!res.ok) throw new Error(`addPromoCodes failed: ${res.status}`);
   },
@@ -414,6 +423,9 @@ window.LiveMeUpCartGatewayV4 = {
   },
 };
 ```
+
+On the Storefront API, `cartDiscountCodesUpdate` replaces all the cart's codes too: read the cart's
+`discountCodes { code }` and pass them along with the new ones.
 
 ### 2.6 Bare-minimum gateway (degraded — not recommended)
 
